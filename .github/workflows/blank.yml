@@ -54,16 +54,13 @@ jobs:
 
           def clean_generated_code(raw: str) -> str:
               """Remove Markdown code blocks, backticks, and common prefixes."""
-              # Strip fenced code blocks (with or without language specifier)
               code = re.sub(r'```(?:python|json)?\s*\n?(.*?)\n?```', r'\1', raw, flags=re.DOTALL | re.IGNORECASE)
-              # Remove any remaining backticks
               code = re.sub(r'^`+|`+$', '', code, flags=re.MULTILINE).strip()
-              # Remove explanatory prefixes
               code = re.sub(r'^(?:Here is the code|The following code|```).*?\n', '', code, flags=re.IGNORECASE | re.DOTALL).strip()
               return code
 
           def llm_generate(model, tokenizer, prompt, max_tokens=512):
-              """Safe generate helper - mlx_lm Python API does not support 'temp'/'temperature'."""
+              """Safe generate helper - mlx_lm Python API does not support temp/temperature."""
               messages = [
                   {"role": "system", "content": "You are a precise code generation assistant. Output ONLY valid Python code or valid JSON. Never use markdown, backticks, code blocks, or any explanations."},
                   {"role": "user", "content": prompt}
@@ -71,11 +68,8 @@ jobs:
               text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
               kwargs = {"max_tokens": max_tokens, "verbose": False}
-
-              # Safe call (no sampling params that cause TypeError)
               response = generate(model, tokenizer, prompt=text, **kwargs)
 
-              # Clean response
               cleaned = re.sub(r'<\|im_end\|>.*', '', response).strip()
               return cleaned
 
@@ -123,14 +117,15 @@ jobs:
 
           def test_failure_case(model_and_tokenizer):
               model, tokenizer = model_and_tokenizer
-              prompt = "Output ONLY the Python code (no markdown, no backticks) for a function named 'broken' that does 1/0 to raise ZeroDivisionError."
+              # Stronger prompt to guarantee it raises on call
+              prompt = "Output ONLY the Python code (no markdown, no backticks, no explanations) for a function named 'broken' that immediately raises ZeroDivisionError when called, for example by returning 1/0."
               raw = llm_generate(model, tokenizer, prompt)
               code_snippet = clean_generated_code(raw)
               local_globals = {}
-              with pytest.raises(Exception):
-                  exec(code_snippet, local_globals)
-                  if 'broken' in local_globals:
-                      local_globals['broken']()
+              exec(code_snippet, local_globals)
+              assert 'broken' in local_globals, f"broken() not found. Cleaned code:\n{code_snippet}"
+              with pytest.raises(Exception):  # ZeroDivisionError or any exception is acceptable
+                  local_globals['broken']()   # Explicitly CALL the function to trigger the error
 
           def test_mini_opensage_loop(model_and_tokenizer):
               model, tokenizer = model_and_tokenizer
@@ -146,7 +141,6 @@ jobs:
                   max_val = local_globals.get("find_max", lambda x: max(x))([1,5,3])
                   assert max_val == 5
               except:
-                  # Fallback check
                   assert "def " in response and "max" in response.lower()
 
           if __name__ == "__main__":
@@ -160,7 +154,7 @@ jobs:
         if: always()
         run: |
           echo "✅ OpenSage preliminary tests finished on Qwen2-0.5B-MLX"
-          echo "Fixes applied: Stronger Markdown stripping + strict 'ONLY code/JSON' prompts"
+          echo "Fixes applied: Stronger failure-case prompt + explicit function call to guarantee exception"
           echo "Tests covered:"
           echo "1. Dynamic tool synthesis"
           echo "2. Tool execution & reuse"
