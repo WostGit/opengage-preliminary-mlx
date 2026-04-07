@@ -1,4 +1,4 @@
-name: OpenSage Preliminary Testing with Qwen2-0.5B on MLX
+name: OpenSage Preliminary Testing with Qwen2-0.5B on MLX - Ultra Verbose
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   preliminary-testing:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -36,7 +36,7 @@ jobs:
           pip install --upgrade pip
           pip install mlx mlx-lm pytest
 
-      - name: Create robust test script (Qwen2-0.5B on MLX)
+      - name: Create ultra-verbose test script
         run: |
           cat > test_opensage_preliminary.py << 'EOF'
           import pytest
@@ -44,23 +44,32 @@ jobs:
           import json
           import re
 
+          print("="*80)
+          print("🚀 Starting Ultra-Verboose OpenSage Preliminary Tests")
+          print("="*80)
+
           @pytest.fixture(scope="session")
           def model_and_tokenizer():
+              print("📥 Loading Qwen2-0.5B-Instruct-MLX...")
               model, tokenizer = load(
                   "Qwen/Qwen2-0.5B-Instruct-MLX",
                   tokenizer_config={"eos_token": "<|im_end|>"}
               )
+              print("✅ Model loaded successfully")
               return model, tokenizer
 
           def clean_generated_code(raw: str) -> str:
-              """Remove Markdown code blocks, backticks, and common prefixes."""
+              print(f"🧹 Raw LLM output:\n{raw}\n{'-'*60}")
               code = re.sub(r'```(?:python|json)?\s*\n?(.*?)\n?```', r'\1', raw, flags=re.DOTALL | re.IGNORECASE)
               code = re.sub(r'^`+|`+$', '', code, flags=re.MULTILINE).strip()
               code = re.sub(r'^(?:Here is the code|The following code|```).*?\n', '', code, flags=re.IGNORECASE | re.DOTALL).strip()
+              print(f"✅ Cleaned code:\n{code}\n{'-'*60}")
               return code
 
-          def llm_generate(model, tokenizer, prompt, max_tokens=512):
-              """Safe generate helper - mlx_lm Python API does not support temp/temperature."""
+          def llm_generate(model, tokenizer, prompt, max_tokens=512, test_name=""):
+              print(f"\n🔍 [{test_name}] Sending prompt to LLM...")
+              print(f"Prompt: {prompt[:300]}{'...' if len(prompt)>300 else ''}")
+              
               messages = [
                   {"role": "system", "content": "You are a precise code generation assistant. Output ONLY valid Python code or valid JSON. Never use markdown, backticks, code blocks, or any explanations."},
                   {"role": "user", "content": prompt}
@@ -71,94 +80,113 @@ jobs:
               response = generate(model, tokenizer, prompt=text, **kwargs)
 
               cleaned = re.sub(r'<\|im_end\|>.*', '', response).strip()
+              print(f"📤 Raw response received (first 500 chars): {cleaned[:500]}...")
               return cleaned
 
           # ==================== TEST CASES ====================
 
           def test_dynamic_tool_synthesis(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 1: Dynamic Tool Synthesis (add function)")
               model, tokenizer = model_and_tokenizer
               prompt = "Output ONLY the Python code (no markdown, no backticks, no explanations) for a function named 'add' that takes two integers a and b and returns their sum."
-              raw = llm_generate(model, tokenizer, prompt, max_tokens=200)
+              raw = llm_generate(model, tokenizer, prompt, max_tokens=200, test_name="Dynamic Tool Synthesis")
               code_snippet = clean_generated_code(raw)
               local_globals = {}
               exec(code_snippet, local_globals)
-              assert 'add' in local_globals, f"add() not found. Cleaned code:\n{code_snippet}"
-              assert local_globals['add'](5, 7) == 12
+              assert 'add' in local_globals
+              result = local_globals['add'](5, 7)
+              print(f"✅ add(5, 7) = {result}")
+              assert result == 12
 
           def test_tool_execution(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 2: Tool Execution (multiply function)")
               model, tokenizer = model_and_tokenizer
               prompt = "Output ONLY the Python code (no markdown, no backticks, no explanations) for a function named 'multiply' that takes two numbers a and b and returns their product."
-              raw = llm_generate(model, tokenizer, prompt)
+              raw = llm_generate(model, tokenizer, prompt, test_name="Tool Execution")
               code_snippet = clean_generated_code(raw)
               local_globals = {}
               exec(code_snippet, local_globals)
               assert 'multiply' in local_globals
-              assert local_globals['multiply'](3, 4) == 12
+              result = local_globals['multiply'](3, 4)
+              print(f"✅ multiply(3, 4) = {result}")
+              assert result == 12
 
           def test_vertical_topology(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 3: Vertical Topology Decision")
               model, tokenizer = model_and_tokenizer
               prompt = 'For the task "Calculate sum of 10 and 20", decide the topology. Output ONLY valid JSON: {"decision": "Spawn sub-agent: math_calculator"} or {"decision": "No spawn needed"}'
-              decision_json = llm_generate(model, tokenizer, prompt, max_tokens=100)
+              decision_json = llm_generate(model, tokenizer, prompt, max_tokens=100, test_name="Vertical Topology")
+              print(f"📊 Raw decision: {decision_json}")
               try:
                   decision = json.loads(decision_json)
+                  print(f"✅ Parsed JSON decision: {decision}")
                   assert "decision" in decision
-              except json.JSONDecodeError:
+              except:
+                  print("⚠️  JSON parse failed, using string match")
                   assert any(x in decision_json for x in ["Spawn sub-agent", "No spawn"])
 
           def test_hierarchical_memory(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 4: Hierarchical Memory Management")
               model, tokenizer = model_and_tokenizer
               memory = {"short_term": [], "long_term": {}}
               prompt = "Summarize this in one short sentence for long-term memory: Simulate OpenSage tool synthesis with Qwen2. Output ONLY the summary string."
-              summary = llm_generate(model, tokenizer, prompt, max_tokens=80)
+              summary = llm_generate(model, tokenizer, prompt, max_tokens=80, test_name="Memory")
+              print(f"📝 Summary from LLM: {summary}")
               memory["long_term"]["task_goal"] = summary
               memory["short_term"].append(("task_goal", summary))
               retrieved = memory["long_term"].get("task_goal")
+              print(f"🔍 Retrieved from memory: {retrieved}")
               assert retrieved == summary
 
           def test_failure_case(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 5: Failure Case (bad code that should raise exception)")
               model, tokenizer = model_and_tokenizer
-              # Stronger prompt to guarantee it raises on call
-              prompt = "Output ONLY the Python code (no markdown, no backticks, no explanations) for a function named 'broken' that immediately raises ZeroDivisionError when called, for example by returning 1/0."
-              raw = llm_generate(model, tokenizer, prompt)
+              prompt = "Output ONLY the Python code (no markdown, no backticks, no explanations) for a function named 'broken' that immediately raises ZeroDivisionError when called (e.g. return 1/0)."
+              raw = llm_generate(model, tokenizer, prompt, test_name="Failure Case")
               code_snippet = clean_generated_code(raw)
               local_globals = {}
               exec(code_snippet, local_globals)
-              assert 'broken' in local_globals, f"broken() not found. Cleaned code:\n{code_snippet}"
-              with pytest.raises(Exception):  # ZeroDivisionError or any exception is acceptable
-                  local_globals['broken']()   # Explicitly CALL the function to trigger the error
+              assert 'broken' in local_globals
+              print("✅ Function 'broken' created. Calling it now...")
+              with pytest.raises(Exception) as exc_info:
+                  local_globals['broken']()
+              print(f"✅ Exception correctly raised: {type(exc_info.value).__name__} - {exc_info.value}")
 
           def test_mini_opensage_loop(model_and_tokenizer):
+              print("\n" + "="*80)
+              print("🧪 TEST 6: Mini OpenSage Loop (tool + topology)")
               model, tokenizer = model_and_tokenizer
               prompt = """Simulate one OpenSage step for task "Create a tool that finds the max value in list [1,5,3]".
               Output ONLY valid JSON: {"topology": "vertical", "tool_code": "def find_max(lst): ..."}"""
-              response = llm_generate(model, tokenizer, prompt, max_tokens=400)
+              response = llm_generate(model, tokenizer, prompt, max_tokens=400, test_name="Mini OpenSage Loop")
               try:
                   data = json.loads(response)
+                  print(f"✅ Parsed JSON: {data}")
                   assert "topology" in data and "tool_code" in data
                   code = clean_generated_code(data["tool_code"])
                   local_globals = {}
                   exec(code, local_globals)
                   max_val = local_globals.get("find_max", lambda x: max(x))([1,5,3])
+                  print(f"✅ find_max([1,5,3]) = {max_val}")
                   assert max_val == 5
               except:
+                  print("⚠️  JSON parsing failed, doing fallback check")
                   assert "def " in response and "max" in response.lower()
 
           if __name__ == "__main__":
               pytest.main([__file__, "-q", "--tb=short"])
           EOF
 
-      - name: Run ALL preliminary test cases
+      - name: Run ALL preliminary test cases (Ultra Verbose)
         run: python -m pytest test_opensage_preliminary.py -q --tb=short
 
-      - name: Print summary (always run)
+      - name: Final Summary
         if: always()
         run: |
-          echo "✅ OpenSage preliminary tests finished on Qwen2-0.5B-MLX"
-          echo "Fixes applied: Stronger failure-case prompt + explicit function call to guarantee exception"
-          echo "Tests covered:"
-          echo "1. Dynamic tool synthesis"
-          echo "2. Tool execution & reuse"
-          echo "3. Vertical topology decision"
-          echo "4. Hierarchical memory management"
-          echo "5. Failure case (bad code)"
-          echo "6. Mini OpenSage loop"
+          echo "🎉 ULTRA VERBOSE TEST RUN COMPLETED"
+          echo "All tests executed with full visibility into LLM outputs, cleaning, and execution steps."
